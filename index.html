@@ -227,7 +227,7 @@
 
   <div class="panel">
     <div class="panel-head">Превью водяного знака</div>
-    <canvas id="previewCanvas" style="width:100%;height:200px;border-radius:10px;background:#0a0a12;display:block;"></canvas>
+    <canvas id="previewCanvas" style="width:100%;aspect-ratio:16/9;border-radius:10px;background:#0a0a12;display:block;"></canvas>
   </div>
 
   <div class="panel">
@@ -367,21 +367,21 @@ function previewLoop() {
 
   if (firstFrame) {
     pvCtx.drawImage(firstFrame, 0, 0, vW, vH);
+
+    const text = $('wmText').value || 'WATERMARK';
+    const size = parseInt($('wmSize').value);
+    pvCtx.font = `bold ${size}px monospace`;
+    const tw = pvCtx.measureText(text).width;
+    const elapsed = (performance.now() - previewStart) / 1000;
+    const pos = calcWmPosition(elapsed, tw, size, vW, vH, $('wmPattern').value, parseInt($('wmSpeed').value));
+    drawWm(pvCtx, pos, text, size, $('wmColor').value, parseInt($('wmOpacity').value));
   } else {
     pvCtx.fillStyle = '#0e0e18'; pvCtx.fillRect(0, 0, vW, vH);
-    pvCtx.globalAlpha = 0.2; pvCtx.fillStyle = '#fff';
-    pvCtx.font = 'bold 28px monospace'; pvCtx.textAlign = 'center';
+    pvCtx.globalAlpha = 0.4; pvCtx.fillStyle = '#fff';
+    pvCtx.font = 'bold 48px monospace'; pvCtx.textAlign = 'center';
     pvCtx.fillText('Загрузите видео для превью', vW/2, vH/2);
     pvCtx.textAlign = 'left'; pvCtx.globalAlpha = 1;
   }
-
-  const text = $('wmText').value || 'WATERMARK';
-  const size = parseInt($('wmSize').value);
-  pvCtx.font = `bold ${size}px monospace`;
-  const tw = pvCtx.measureText(text).width;
-  const elapsed = (performance.now() - previewStart) / 1000;
-  const pos = calcWmPosition(elapsed, tw, size, vW, vH, $('wmPattern').value, parseInt($('wmSpeed').value));
-  drawWm(pvCtx, pos, text, size, $('wmColor').value, parseInt($('wmOpacity').value));
 
   requestAnimationFrame(previewLoop);
 }
