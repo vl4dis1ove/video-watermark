@@ -384,7 +384,7 @@ function previewLoop() {
 }
 previewLoop();
 
-// ── Export (direct MP4 via WebCodecs + mp4-muxer) ──
+// ── Export (direct MP4 via WebCodecs + mp4-muxer, with audio) ──
 $('btnExport').addEventListener('click', async () => {
   if (!selectedFile) return;
   const btn = $('btnExport'), status = $('statusText');
@@ -395,12 +395,22 @@ $('btnExport').addEventListener('click', async () => {
   status.className = 'status-text'; status.textContent = 'Подготовка...';
 
   try {
-    // Check WebCodecs support
     if (typeof VideoEncoder === 'undefined') {
       throw new Error('Ваш браузер не поддерживает WebCodecs. Используйте Chrome 94+');
     }
 
-    // Load source video
+    // ── 1. Decode audio from source file ──
+    status.textContent = 'Извлечение аудио...';
+    let audioBuffer = null;
+    try {
+      const audioCtx = new OfflineAudioContext(2, 1, 48000); // temp context
+      const arrBuf = await selectedFile.arrayBuffer();
+      audioBuffer = await audioCtx.decodeAudioData(arrBuf);
+    } catch(e) {
+      console.warn('No audio or decode failed:', e);
+    }
+
+    // ── 2. Load source video for frame extraction ──
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true; video.preload = 'auto';
     video.style.cssText = 'position:fixed;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
@@ -433,32 +443,84 @@ $('btnExport').addEventListener('click', async () => {
     const fps = 30;
     const duration = video.duration;
     const totalFrames = Math.ceil(duration * fps);
+    const hasAudio = !!audioBuffer;
 
-    status.textContent = `${W}×${H} · ${totalFrames} кадров · кодирование MP4...`;
+    status.textContent = `${W}×${H} · ${hasAudio ? 'аудио ✓' : 'без аудио'} · подготовка...`;
 
-    // Setup mp4-muxer
-    const muxer = new Mp4Muxer.Muxer({
+    // ── 3. Setup mp4-muxer ──
+    const muxerOpts = {
       target: new Mp4Muxer.ArrayBufferTarget(),
       video: { codec: 'avc', width: W, height: H },
       fastStart: 'in-memory',
-    });
+    };
+    if (hasAudio) {
+      muxerOpts.audio = { codec: 'aac', numberOfChannels: audioBuffer.numberOfChannels, sampleRate: audioBuffer.sampleRate };
+    }
+    const muxer = new Mp4Muxer.Muxer(muxerOpts);
 
-    // Setup VideoEncoder
-    let encodedFrames = 0;
-    const encoder = new VideoEncoder({
+    // ── 4. Setup VideoEncoder ──
+    const videoEncoder = new VideoEncoder({
       output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-      error: e => console.error('Encoder error:', e),
+      error: e => console.error('VideoEncoder error:', e),
     });
-
-    encoder.configure({
+    videoEncoder.configure({
       codec: 'avc1.640028',
-      width: W,
-      height: H,
+      width: W, height: H,
       bitrate: 5_000_000,
       framerate: fps,
     });
 
-    // Watermark settings
+    // ── 5. Setup AudioEncoder & encode all audio upfront ──
+    if (hasAudio) {
+      status.textContent = 'Кодирование аудио...';
+      const audioEncoder = new AudioEncoder({
+        output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+        error: e => console.error('AudioEncoder error:', e),
+      });
+      audioEncoder.configure({
+        codec: 'mp4a.40.2',
+        numberOfChannels: audioBuffer.numberOfChannels,
+        sampleRate: audioBuffer.sampleRate,
+        bitrate: 128_000,
+      });
+
+      // Feed audio in chunks of 1024 samples
+      const chunkSize = 1024;
+      const numChannels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
+      const totalSamples = audioBuffer.length;
+
+      // Interleave channels into planar Float32 arrays
+      const channelData = [];
+      for (let ch = 0; ch < numChannels; ch++) {
+        channelData.push(audioBuffer.getChannelData(ch));
+      }
+
+      for (let offset = 0; offset < totalSamples; offset += chunkSize) {
+        const len = Math.min(chunkSize, totalSamples - offset);
+        const audioData = new AudioData({
+          format: 'f32-planar',
+          sampleRate: sampleRate,
+          numberOfFrames: len,
+          numberOfChannels: numChannels,
+          timestamp: (offset / sampleRate) * 1_000_000,
+          data: (() => {
+            const buf = new Float32Array(len * numChannels);
+            for (let ch = 0; ch < numChannels; ch++) {
+              buf.set(channelData[ch].subarray(offset, offset + len), ch * len);
+            }
+            return buf;
+          })(),
+        });
+        audioEncoder.encode(audioData);
+        audioData.close();
+      }
+
+      await audioEncoder.flush();
+      audioEncoder.close();
+    }
+
+    // ── 6. Encode video frames with watermark ──
     const text = $('wmText').value || 'WATERMARK';
     const size = parseInt($('wmSize').value);
     const color = $('wmColor').value;
@@ -466,48 +528,40 @@ $('btnExport').addEventListener('click', async () => {
     const pattern = $('wmPattern').value;
     const speed = parseInt($('wmSpeed').value);
 
-    // Canvas for compositing
     const canvas = new OffscreenCanvas(W, H);
     const ctx = canvas.getContext('2d');
 
-    // Seek to each frame and encode
     for (let i = 0; i < totalFrames; i++) {
       const t = i / fps;
       video.currentTime = t;
       await new Promise(r => { video.onseeked = r; });
 
-      // Draw video frame + watermark
       ctx.drawImage(video, 0, 0, W, H);
       ctx.font = `bold ${size}px monospace`;
       const tw = ctx.measureText(text).width;
       const pos = calcWmPosition(t, tw, size, W, H, pattern, speed);
       drawWm(ctx, pos, text, size, color, opacity);
 
-      // Encode
       const frame = new VideoFrame(canvas, {
         timestamp: t * 1_000_000,
         duration: (1 / fps) * 1_000_000,
       });
-      const isKey = i % (fps * 2) === 0; // keyframe every 2 sec
-      encoder.encode(frame, { keyFrame: isKey });
+      videoEncoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
       frame.close();
 
-      // Progress
       const pct = ((i + 1) / totalFrames) * 100;
       pInner.style.width = pct + '%';
-      status.textContent = `Кодирование MP4: ${Math.round(pct)}% (${i + 1}/${totalFrames})`;
+      status.textContent = `Кодирование видео: ${Math.round(pct)}% (${i + 1}/${totalFrames})`;
 
-      // Let UI breathe every 5 frames
       if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
     }
 
-    await encoder.flush();
-    encoder.close();
+    await videoEncoder.flush();
+    videoEncoder.close();
     muxer.finalize();
 
-    // Download
-    const mp4Buf = muxer.target.buffer;
-    const mp4Blob = new Blob([mp4Buf], { type: 'video/mp4' });
+    // ── 7. Download ──
+    const mp4Blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(mp4Blob);
     a.download = 'watermarked_' + selectedFile.name.replace(/\.[^.]+$/, '') + '.mp4';
@@ -517,7 +571,7 @@ $('btnExport').addEventListener('click', async () => {
     if (video.parentNode) video.parentNode.removeChild(video);
     pInner.style.width = '100%';
     status.className = 'status-text ok';
-    status.textContent = '✓ MP4 сохранён!';
+    status.textContent = '✓ MP4 сохранён' + (hasAudio ? ' (с аудио)' : '') + '!';
 
   } catch (err) {
     try { document.querySelectorAll('video').forEach(v => { if (v.style.opacity==='0') v.remove(); }); } catch(e){}
