@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Watermark Studio</title>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #08080c;
+    --s1: #0f0f16;
+    --s2: #16161f;
+    --s3: #1e1e2a;
+    --bd: #262636;
+    --acc: #22dda0;
+    --acc2: #18c5ff;
+    --tx: #e4e4ef;
+    --dm: #5e5e76;
+    --red: #ff4060;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Manrope', sans-serif;
+    background: var(--bg);
+    color: var(--tx);
+    min-height: 100vh;
+  }
+
+  .app { max-width: 720px; margin: 0 auto; padding: 20px; }
+
+  header { text-align: center; padding: 36px 0 28px; }
+
+  .logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 24px; font-weight: 500;
+    background: linear-gradient(135deg, var(--acc), var(--acc2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .tagline { color: var(--dm); font-size: 13px; margin-top: 6px; }
+
+  .upload-label {
+    display: flex; align-items: center; gap: 14px;
+    padding: 20px 24px; background: var(--s1);
+    border: 1px solid var(--bd); border-radius: 14px;
+    cursor: pointer; transition: all 0.25s; margin-bottom: 16px;
+  }
+  .upload-label:hover { border-color: var(--acc); background: var(--s2); }
+  .upload-label.has-file { border-color: var(--acc); }
+
+  .upload-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: linear-gradient(135deg, #22dda020, #18c5ff15);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+
+  .upload-info { flex: 1; }
+  .upload-info .name { font-weight: 600; font-size: 14px; }
+  .upload-info .meta { color: var(--dm); font-size: 12px; margin-top: 2px; }
+
+  .panel {
+    background: var(--s1); border: 1px solid var(--bd);
+    border-radius: 14px; padding: 20px 22px; margin-bottom: 14px;
+  }
+
+  .panel-head {
+    font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 2px; color: var(--acc);
+    margin-bottom: 18px; display: flex; align-items: center; gap: 8px;
+  }
+  .panel-head::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--acc);
+  }
+
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 600; color: var(--dm); margin-bottom: 7px;
+  }
+  .field label .val {
+    font-family: 'DM Mono', monospace; font-size: 12px; color: var(--acc);
+  }
+
+  input[type="text"], select {
+    width: 100%; padding: 10px 14px; background: var(--s2);
+    border: 1px solid var(--bd); border-radius: 10px; color: var(--tx);
+    font-family: 'Manrope', sans-serif; font-size: 14px;
+    outline: none; transition: border-color 0.2s;
+  }
+  input[type="text"]:focus, select:focus { border-color: var(--acc); }
+
+  select {
+    cursor: pointer; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235e5e76' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+  }
+
+  input[type="range"] {
+    width: 100%; -webkit-appearance: none; height: 5px;
+    background: var(--bd); border-radius: 3px; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px;
+    background: var(--acc); border-radius: 50%; cursor: pointer;
+    box-shadow: 0 0 8px #22dda040;
+  }
+
+  .color-row { display: flex; align-items: center; gap: 10px; }
+  .color-row input[type="color"] {
+    width: 42px; height: 34px; border: 1px solid var(--bd);
+    border-radius: 8px; background: var(--s2); cursor: pointer; padding: 3px;
+  }
+  .color-hex { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--dm); }
+
+  .btn-export {
+    width: 100%; padding: 16px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, var(--acc), var(--acc2));
+    color: var(--bg); font-family: 'Manrope', sans-serif;
+    font-size: 15px; font-weight: 800; cursor: pointer;
+    transition: all 0.3s; letter-spacing: 0.3px;
+    position: relative; overflow: hidden;
+  }
+  .btn-export:hover { transform: translateY(-2px); box-shadow: 0 8px 30px #22dda040; }
+  .btn-export:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .progress-outer {
+    width: 100%; height: 6px; background: var(--bd); border-radius: 3px;
+    margin-top: 12px; overflow: hidden; display: none;
+  }
+  .progress-outer.active { display: block; }
+  .progress-inner {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--acc), var(--acc2));
+    border-radius: 3px; transition: width 0.3s;
+  }
+
+  .status-text {
+    text-align: center; font-size: 13px;
+    font-family: 'DM Mono', monospace;
+    color: var(--dm); margin-top: 8px; min-height: 20px;
+  }
+  .status-text.ok { color: var(--acc); }
+  .status-text.err { color: var(--red); }
+
+  .note {
+    text-align: center; font-size: 11px; color: var(--dm);
+    margin-top: 20px; line-height: 1.6; padding: 0 20px;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .panel { animation: fadeUp 0.35s ease both; }
+  .panel:nth-child(2) { animation-delay: 0.06s; }
+  .panel:nth-child(3) { animation-delay: 0.12s; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">◆ video watermark</div>
+    <p class="tagline">Загрузите видео → настройте водяной знак → сохраните MP4</p>
+  </header>
+
+  <label class="upload-label" id="uploadLabel" for="fileInput">
+    <input type="file" id="fileInput" accept="video/*" hidden>
+    <div class="upload-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22dda0" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </div>
+    <div class="upload-info">
+      <div class="name" id="fileName">Выберите видеофайл</div>
+      <div class="meta" id="fileMeta">MP4, WebM, MOV · нажмите или перетащите</div>
+    </div>
+  </label>
+
+  <div class="panel">
+    <div class="panel-head">Текст водяного знака</div>
+    <div class="field">
+      <label>Текст</label>
+      <input type="text" id="wmText" value="WATERMARK" placeholder="Введите текст...">
+    </div>
+    <div class="field">
+      <label>Размер <span class="val" id="sizeVal">36px</span></label>
+      <input type="range" id="wmSize" min="10" max="150" value="36">
+    </div>
+    <div class="field">
+      <label>Цвет</label>
+      <div class="color-row">
+        <input type="color" id="wmColor" value="#ffffff">
+        <span class="color-hex" id="colorHex">#ffffff</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Прозрачность <span class="val" id="opVal">40%</span></label>
+      <input type="range" id="wmOpacity" min="5" max="100" value="40">
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">Движение</div>
+    <div class="field">
+      <label>Паттерн</label>
+      <select id="wmPattern">
+        <option value="horizontal">Горизонтально ←→</option>
+        <option value="vertical">Вертикально ↑↓</option>
+        <option value="diagonal">По диагонали ↗↙</option>
+        <option value="bounce" selected>Отскок (DVD стиль)</option>
+        <option value="circular">По кругу ◯</option>
+        <option value="wave">Волна ~</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Скорость <span class="val" id="spdVal">3x</span></label>
+      <input type="range" id="wmSpeed" min="1" max="10" value="3">
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">Превью водяного знака</div>
+    <canvas id="previewCanvas" style="width:100%;height:200px;border-radius:10px;background:#0a0a12;display:block;"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">Экспорт</div>
+    <button class="btn-export" id="btnExport" disabled>⬇ Сохранить видео с водяным знаком (.mp4)</button>
+    <div class="progress-outer" id="progressOuter">
+      <div class="progress-inner" id="progressInner"></div>
+    </div>
+    <div class="status-text" id="statusText"></div>
+  </div>
+
+  <p class="note">
+    Всё обрабатывается в вашем браузере.<br>
+    Видео не загружается на сервер.
+  </p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let selectedFile = null;
+let firstFrame = null;
+let firstFrameAspect = 16/9;
+
+// ── File handling ──
+function onFileSelected(file) {
+  if (!file) return;
+  selectedFile = file;
+  $('fileName').textContent = file.name;
+  $('fileMeta').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB · ' + file.type;
+  $('uploadLabel').classList.add('has-file');
+  $('btnExport').disabled = false;
+  $('statusText').textContent = '';
+  $('statusText').className = 'status-text';
+  extractFirstFrame(file);
+}
+
+function extractFirstFrame(file) {
+  const video = document.createElement('video');
+  video.muted = true; video.playsInline = true; video.preload = 'auto';
+  video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+  document.body.appendChild(video);
+  const url = URL.createObjectURL(file);
+  video.src = url;
+
+  let done = false;
+  const capture = () => {
+    if (done) return; done = true;
+    const W = video.videoWidth || 640, H = video.videoHeight || 360;
+    firstFrameAspect = W / H;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    c.getContext('2d').drawImage(video, 0, 0, W, H);
+    firstFrame = c;
+    const pvRect = pvs.getBoundingClientRect();
+    pvs.style.height = Math.round(pvRect.width / firstFrameAspect) + 'px';
+    video.pause(); video.removeAttribute('src'); video.load();
+    document.body.removeChild(video); URL.revokeObjectURL(url);
+  };
+
+  video.addEventListener('seeked', capture);
+  video.addEventListener('error', () => {
+    if (!done) { done = true; firstFrame = null; }
+    try { document.body.removeChild(video); } catch(e){} URL.revokeObjectURL(url);
+  });
+  video.addEventListener('loadeddata', () => { video.currentTime = 0.1; });
+  video.load();
+}
+
+$('fileInput').addEventListener('change', e => onFileSelected(e.target.files[0]));
+$('uploadLabel').addEventListener('dragover', e => e.preventDefault());
+$('uploadLabel').addEventListener('drop', e => { e.preventDefault(); onFileSelected(e.dataTransfer?.files?.[0]); });
+
+// ── Range displays ──
+$('wmSize').oninput = e => $('sizeVal').textContent = e.target.value + 'px';
+$('wmSpeed').oninput = e => $('spdVal').textContent = e.target.value + 'x';
+$('wmOpacity').oninput = e => $('opVal').textContent = e.target.value + '%';
+$('wmColor').oninput = e => $('colorHex').textContent = e.target.value;
+
+// ── Watermark position — deterministic by time ──
+function calcWmPosition(t, tw, th, W, H, pattern, speed) {
+  const rate = speed * 80;
+  const usableW = W - tw, usableH = H - th;
+  if (usableW <= 0 || usableH <= 0) return { x: 0, y: th };
+  let x = 0, y = 0;
+  switch (pattern) {
+    case 'horizontal': {
+      const c = usableW * 2, p = (t * rate) % c;
+      x = p <= usableW ? p : c - p; y = (H - th) / 2; break;
+    }
+    case 'vertical': {
+      const c = usableH * 2, p = (t * rate) % c;
+      x = (W - tw) / 2; y = (p <= usableH ? p : c - p) + th; break;
+    }
+    case 'diagonal': {
+      const cX = usableW*2, cY = usableH*2;
+      const pX = (t*rate)%cX, pY = (t*rate*0.6)%cY;
+      x = pX<=usableW?pX:cX-pX; y = (pY<=usableH?pY:cY-pY)+th; break;
+    }
+    case 'bounce': {
+      const cX = usableW*2, cY = usableH*2;
+      const pX = (t*rate)%cX, pY = (t*rate*0.7)%cY;
+      x = pX<=usableW?pX:cX-pX; y = (pY<=usableH?pY:cY-pY)+th; break;
+    }
+    case 'circular': {
+      const a = t * speed * 1.2;
+      x = W/2-tw/2+Math.cos(a)*(usableW/3); y = H/2+Math.sin(a)*(usableH/3); break;
+    }
+    case 'wave': {
+      const c = usableW*2, p = (t*rate)%c;
+      x = p<=usableW?p:c-p; y = H/2+Math.sin(x*0.02)*(H/4); break;
+    }
+  }
+  return { x: Math.max(0,Math.min(usableW,x)), y: Math.max(th,Math.min(H,y)) };
+}
+
+function drawWm(ctx, pos, text, size, color, opacity) {
+  ctx.globalAlpha = opacity / 100;
+  ctx.fillStyle = color;
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 4;
+  ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 2;
+  ctx.fillText(text, pos.x, pos.y);
+  ctx.globalAlpha = 1; ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+}
+
+// ── Preview ──
+const pvs = $('previewCanvas');
+const pvCtx = pvs.getContext('2d');
+const previewStart = performance.now();
+
+function previewLoop() {
+  const vW = firstFrame ? firstFrame.width : 1920;
+  const vH = firstFrame ? firstFrame.height : 1080;
+  if (pvs.width !== vW || pvs.height !== vH) { pvs.width = vW; pvs.height = vH; }
+
+  pvCtx.clearRect(0, 0, vW, vH);
+
+  if (firstFrame) {
+    pvCtx.drawImage(firstFrame, 0, 0, vW, vH);
+  } else {
+    pvCtx.fillStyle = '#0e0e18'; pvCtx.fillRect(0, 0, vW, vH);
+    pvCtx.globalAlpha = 0.2; pvCtx.fillStyle = '#fff';
+    pvCtx.font = 'bold 28px monospace'; pvCtx.textAlign = 'center';
+    pvCtx.fillText('Загрузите видео для превью', vW/2, vH/2);
+    pvCtx.textAlign = 'left'; pvCtx.globalAlpha = 1;
+  }
+
+  const text = $('wmText').value || 'WATERMARK';
+  const size = parseInt($('wmSize').value);
+  pvCtx.font = `bold ${size}px monospace`;
+  const tw = pvCtx.measureText(text).width;
+  const elapsed = (performance.now() - previewStart) / 1000;
+  const pos = calcWmPosition(elapsed, tw, size, vW, vH, $('wmPattern').value, parseInt($('wmSpeed').value));
+  drawWm(pvCtx, pos, text, size, $('wmColor').value, parseInt($('wmOpacity').value));
+
+  requestAnimationFrame(previewLoop);
+}
+previewLoop();
+
+// ── Export (direct MP4 via WebCodecs + mp4-muxer) ──
+$('btnExport').addEventListener('click', async () => {
+  if (!selectedFile) return;
+  const btn = $('btnExport'), status = $('statusText');
+  const pOuter = $('progressOuter'), pInner = $('progressInner');
+
+  btn.disabled = true;
+  pOuter.classList.add('active'); pInner.style.width = '0%';
+  status.className = 'status-text'; status.textContent = 'Подготовка...';
+
+  try {
+    // Check WebCodecs support
+    if (typeof VideoEncoder === 'undefined') {
+      throw new Error('Ваш браузер не поддерживает WebCodecs. Используйте Chrome 94+');
+    }
+
+    // Load source video
+    const video = document.createElement('video');
+    video.muted = true; video.playsInline = true; video.preload = 'auto';
+    video.style.cssText = 'position:fixed;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(video);
+    const url = URL.createObjectURL(selectedFile);
+    video.src = url;
+
+    status.textContent = 'Загрузка видео...';
+    await new Promise((resolve, reject) => {
+      let resolved = false;
+      const ok = () => { if (!resolved) { resolved = true; resolve(); } };
+      video.addEventListener('loadeddata', ok);
+      video.addEventListener('canplay', ok);
+      video.addEventListener('canplaythrough', ok);
+      video.addEventListener('error', () => {
+        if (resolved) return; resolved = true;
+        const e = video.error;
+        const codes = {1:'ABORTED',2:'NETWORK',3:'DECODE',4:'SRC_NOT_SUPPORTED'};
+        reject(new Error(e ? (codes[e.code]||e.code) : 'Неизвестная ошибка'));
+      });
+      setTimeout(() => {
+        if (!resolved) { resolved = true; video.readyState >= 2 ? resolve() : reject(new Error('Таймаут')); }
+      }, 15000);
+      video.load();
+    });
+
+    const W = video.videoWidth, H = video.videoHeight;
+    if (!W || !H) throw new Error('Размеры: ' + W + '×' + H);
+
+    const fps = 30;
+    const duration = video.duration;
+    const totalFrames = Math.ceil(duration * fps);
+
+    status.textContent = `${W}×${H} · ${totalFrames} кадров · кодирование MP4...`;
+
+    // Setup mp4-muxer
+    const muxer = new Mp4Muxer.Muxer({
+      target: new Mp4Muxer.ArrayBufferTarget(),
+      video: { codec: 'avc', width: W, height: H },
+      fastStart: 'in-memory',
+    });
+
+    // Setup VideoEncoder
+    let encodedFrames = 0;
+    const encoder = new VideoEncoder({
+      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      error: e => console.error('Encoder error:', e),
+    });
+
+    encoder.configure({
+      codec: 'avc1.640028',
+      width: W,
+      height: H,
+      bitrate: 5_000_000,
+      framerate: fps,
+    });
+
+    // Watermark settings
+    const text = $('wmText').value || 'WATERMARK';
+    const size = parseInt($('wmSize').value);
+    const color = $('wmColor').value;
+    const opacity = parseInt($('wmOpacity').value);
+    const pattern = $('wmPattern').value;
+    const speed = parseInt($('wmSpeed').value);
+
+    // Canvas for compositing
+    const canvas = new OffscreenCanvas(W, H);
+    const ctx = canvas.getContext('2d');
+
+    // Seek to each frame and encode
+    for (let i = 0; i < totalFrames; i++) {
+      const t = i / fps;
+      video.currentTime = t;
+      await new Promise(r => { video.onseeked = r; });
+
+      // Draw video frame + watermark
+      ctx.drawImage(video, 0, 0, W, H);
+      ctx.font = `bold ${size}px monospace`;
+      const tw = ctx.measureText(text).width;
+      const pos = calcWmPosition(t, tw, size, W, H, pattern, speed);
+      drawWm(ctx, pos, text, size, color, opacity);
+
+      // Encode
+      const frame = new VideoFrame(canvas, {
+        timestamp: t * 1_000_000,
+        duration: (1 / fps) * 1_000_000,
+      });
+      const isKey = i % (fps * 2) === 0; // keyframe every 2 sec
+      encoder.encode(frame, { keyFrame: isKey });
+      frame.close();
+
+      // Progress
+      const pct = ((i + 1) / totalFrames) * 100;
+      pInner.style.width = pct + '%';
+      status.textContent = `Кодирование MP4: ${Math.round(pct)}% (${i + 1}/${totalFrames})`;
+
+      // Let UI breathe every 5 frames
+      if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+
+    await encoder.flush();
+    encoder.close();
+    muxer.finalize();
+
+    // Download
+    const mp4Buf = muxer.target.buffer;
+    const mp4Blob = new Blob([mp4Buf], { type: 'video/mp4' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(mp4Blob);
+    a.download = 'watermarked_' + selectedFile.name.replace(/\.[^.]+$/, '') + '.mp4';
+    a.click();
+
+    URL.revokeObjectURL(url);
+    if (video.parentNode) video.parentNode.removeChild(video);
+    pInner.style.width = '100%';
+    status.className = 'status-text ok';
+    status.textContent = '✓ MP4 сохранён!';
+
+  } catch (err) {
+    try { document.querySelectorAll('video').forEach(v => { if (v.style.opacity==='0') v.remove(); }); } catch(e){}
+    status.className = 'status-text err';
+    status.textContent = 'Ошибка: ' + err.message;
+    console.error(err);
+  }
+
+  btn.disabled = false;
+  setTimeout(() => pOuter.classList.remove('active'), 3000);
+});
+</script>
+</body>
+</html>
